@@ -1,0 +1,121 @@
+This week, I had to develop and API handler, using Next.js, to allow to upload files.
+
+Although the documentation of Next.js is quite good, there isn't an example on how to implement an API handler to upload files.
+
+Therefore, after some investigation, I've found the following solution.
+
+To beging, you need to have the formidable package, to parse the form data and axios, to deal with the transfers.
+
+npm i formidable axios
+let's create a new file, under the pages/api folder called upload.tsx.
+
+Inside that file, we're going to add the following
+
+import type { NextApiRequest, NextApiResponse } from 'next'
+import formidable, { File } from 'formidable'
+import fs from 'fs'
+
+const form = formidable({ multiples: true })
+
+const isFile = (file: File | File[]): file is File => !Array.isArray(file) && file.filepath !== undefined
+
+type Data = {
+  message?: string
+} | any[]
+
+const handler = async (
+  req: NextApiRequest,
+  res: NextApiResponse<Data>
+) => {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: 'Method not allowed' })
+  }
+
+  try {
+    const fileContent: string = await(new Promise((resolve, reject) => {
+      form.parse(req, (err, _fields, files) => {
+        if (isFile(files.file)) {
+          const fileContentBuffer = fs.readFileSync(files.file.filepath)
+          const fileContentReadable = fileContentBuffer.toString('utf8')
+
+          resolve(fileContentReadable)
+        }
+
+        reject()
+      })
+    }))
+
+    // Do whatever you'd like with the file, since it's already in text
+    console.log(fileContent)
+
+    res.status(200).send({ message: 'ok' })
+  } catch (err) {
+    res.status(400).send({ message: 'Bad Request'})
+  }
+}
+
+export const config = {
+  api: {
+    bodyParser: false, // Disallow body parsing, consume as stream
+  },
+}
+
+export default handler
+Now, let's create a form to add deal with the submission of the file, under pages/index.tsx.
+
+Inside that file, we're going to add the following:
+
+import React, { SyntheticEvent, useState } from "react"
+import axios from "axios"
+
+const Index = () => {
+  const [file, setFile] = useState("")
+  const [isUploading, setIsUploading] = useState<boolean>(false)
+
+  const handleSubmit = async (event: SyntheticEvent) => {
+    event.preventDefault()
+    setIsUploading(true)
+
+    const formData = new FormData()
+    formData.append("file", file)
+
+    try {
+      await axios.post('api/upload', formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      })
+    } catch (error) {
+      console.error('There was an error uploading the file', error.message)
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleFileSelect = (event: any) => {
+    setFile(event.target.files[0])
+  }
+
+  return (
+    <section className="bg-white border rounded shadow-lg mb-10">
+      <div className="border-b p-3">
+        <h5 className="font-bold uppercase text-gray-600">File</h5>
+      </div>
+      <div className="flex flex-row items-center p-3">
+        <form onSubmit={handleSubmit} className="mr-4">
+          <label className="block mb-2 text-sm font-medium text-gray-900 dark:text-white" htmlFor="file_input">Upload file</label>
+          <input className="mb-1 block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 dark:text-gray-400 focus:outline-none dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400" id="file_input" type="file" name="csv" onChange={handleFileSelect} />
+          <p className="mb-2 text-sm text-gray-500 dark:text-gray-300" id="file_input_help">Text file only.</p>
+          <button className="border p-2" type="submit">Upload</button>
+        </form>
+        {isUploading && (
+          <div className="pl-4">
+            uploading
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+export default Index
